@@ -21,18 +21,16 @@ type Shop struct {
 	DMID        string
 }
 
-var staticHandler = http.FileServer(http.Dir("static"))
-
 var session *mgo.Session
 
 func main() {
 	var err error
 
 	r := mux.NewRouter()
-	r.Handle("/", staticHandler).Methods("GET")
 	r.HandleFunc("/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}", shopFrontHandler).Methods("GET")
 	r.HandleFunc("/edit/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", editHandler).Methods("GET")
 	r.HandleFunc("/shops", newShopHandler).Methods("POST")
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
 
 	http.Handle("/", r)
 
@@ -66,7 +64,7 @@ func main() {
 	}
 	log.Print("Got ", result.DMID, ": ", result.Name)
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8081", nil))
 }
 
 var editTemplate *template.Template
