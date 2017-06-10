@@ -5,9 +5,10 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"regexp"
 
 	"encoding/json"
+
+	"os"
 
 	"github.com/gorilla/mux"
 	mgo "gopkg.in/mgo.v2"
@@ -23,8 +24,17 @@ type Shop struct {
 
 var session *mgo.Session
 
+var dbName string
+
 func main() {
-	var err error
+
+	if len(os.Args) != 4 {
+		log.Fatal("Usage: go run main.go [port] [db address] [db name]")
+	}
+
+	port := os.Args[1]
+	dbAddress := os.Args[2]
+	dbName = os.Args[3]
 
 	r := mux.NewRouter()
 	r.HandleFunc("/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}", shopFrontHandler).Methods("GET")
@@ -34,6 +44,7 @@ func main() {
 
 	http.Handle("/", r)
 
+	var err error
 	editTemplate, err = template.ParseFiles("templates/edit.html")
 	if err != nil {
 		log.Fatal(err)
@@ -44,17 +55,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	shopFrontRegex, err = regexp.Compile("/[2-9A-HJKMNP-Za-hjkmnp-z]{6}")
+	session, err = mgo.Dial(dbAddress)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error creating databse session:\n", err)
 	}
 
-	session, err = mgo.Dial("localhost")
-	if err != nil {
-		log.Fatal("Error creating session:\n", err)
-	}
-
-	c := session.DB("test").C("shops")
+	c := session.DB(dbName).C("shops")
 
 	result := &Shop{}
 	err = c.Find(bson.M{"dmid": "asdfasdf"}).One(result)
@@ -64,7 +70,7 @@ func main() {
 	}
 	log.Print("Got ", result.DMID, ": ", result.Name)
 
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
 var editTemplate *template.Template
@@ -73,7 +79,7 @@ var errorTemplate *template.Template
 func editHandler(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["shopID"]
 	thisShop := Shop{}
-	err := session.DB("test").C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
+	err := session.DB(dbName).C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -81,8 +87,6 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 
 	editTemplate.Execute(w, thisShop)
 }
-
-var shopFrontRegex *regexp.Regexp
 
 func shopFrontHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Shopfront under construction"))
@@ -111,7 +115,7 @@ func newShopHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		newShop.DMID = getNewDMID()
 		newShop.ShopFrontID = getNewShopfrontID()
-		err = session.DB("test").C("shops").Insert(newShop)
+		err = session.DB(dbName).C("shops").Insert(newShop)
 		if err == nil {
 			break
 		} else {
