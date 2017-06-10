@@ -9,14 +9,16 @@ import (
 
 	"encoding/json"
 
+	"github.com/gorilla/mux"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
 
 // Shop represents a store front
 type Shop struct {
-	Name string
-	ID   string
+	Name        string
+	ShopFrontID string
+	DMID        string
 }
 
 var staticHandler = http.FileServer(http.Dir("static"))
@@ -25,9 +27,14 @@ var session *mgo.Session
 
 func main() {
 	var err error
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/edit/", editHandler)
-	http.HandleFunc("/shop", newShopHandler)
+
+	r := mux.NewRouter()
+	r.Handle("/", staticHandler).Methods("GET")
+	r.HandleFunc("/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}", shopFrontHandler).Methods("GET")
+	r.HandleFunc("/edit/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", editHandler).Methods("GET")
+	r.HandleFunc("/shops", newShopHandler).Methods("POST")
+
+	http.Handle("/", r)
 
 	editTemplate, err = template.ParseFiles("templates/edit.html")
 	if err != nil {
@@ -52,12 +59,12 @@ func main() {
 	c := session.DB("test").C("shops")
 
 	result := &Shop{}
-	err = c.Find(bson.M{"id": "asdfa"}).One(result)
+	err = c.Find(bson.M{"dmid": "asdfasdf"}).One(result)
 
 	if err != nil {
 		log.Fatal("Error retrieving document:\n", err)
 	}
-	log.Print("Got ", result.ID, ": ", result.Name)
+	log.Print("Got ", result.DMID, ": ", result.Name)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -66,11 +73,12 @@ var editTemplate *template.Template
 var errorTemplate *template.Template
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/edit/"):]
+	id := mux.Vars(r)["shopID"]
 	thisShop := Shop{}
-	err := session.DB("test").C("shops").Find(bson.M{"id": id}).One(&thisShop)
+	err := session.DB("test").C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	editTemplate.Execute(w, thisShop)
@@ -78,12 +86,8 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 
 var shopFrontRegex *regexp.Regexp
 
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	if shopFrontRegex.MatchString(r.URL.Path) {
-		w.Write([]byte("Under construction"))
-	} else {
-		staticHandler.ServeHTTP(w, r)
-	}
+func shopFrontHandler(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Shopfront under construction"))
 }
 
 type newShopBody struct {
@@ -91,11 +95,6 @@ type newShopBody struct {
 }
 
 func newShopHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(""))
-		return
-	}
 
 	decoder := json.NewDecoder(r.Body)
 	var body newShopBody
@@ -104,15 +103,16 @@ func newShopHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Printf("Error reading POST body:\n%s", err)
-		w.Write([]byte(""))
+		w.Write([]byte("Bad POST request body."))
 		return
 	}
 
-	newShop := Shop{Name: body.Name, ID: ""}
+	newShop := Shop{Name: body.Name, DMID: ""}
 	// loop until we add it
 	log.Printf("Adding shop \"%s\"", newShop.Name)
 	for {
-		newShop.ID = getNewID()
+		newShop.DMID = getNewDMID()
+		newShop.ShopFrontID = getNewShopfrontID()
 		err = session.DB("test").C("shops").Insert(newShop)
 		if err == nil {
 			break
@@ -128,13 +128,21 @@ func newShopHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(bson.M{"newId": newShop.ID})
+	json.NewEncoder(w).Encode(bson.M{"newId": newShop.DMID})
 }
 
 var idCharacters = []byte("abcdefghjkmnpqrstuvwxyz23456789")
 
-func getNewID() string {
-	var newID [5]byte
+func getNewDMID() string {
+	var newID [8]byte
+	for i := range newID {
+		newID[i] = idCharacters[rand.Intn(len(idCharacters))]
+	}
+	return string(newID[:])
+}
+
+func getNewShopfrontID() string {
+	var newID [6]byte
 	for i := range newID {
 		newID[i] = idCharacters[rand.Intn(len(idCharacters))]
 	}
