@@ -50,11 +50,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	errorTemplate, err = template.ParseFiles("templates/error.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	session, err = mgo.Dial(dbAddress)
 	if err != nil {
 		log.Fatal("Error creating databse session:\n", err)
@@ -74,7 +69,6 @@ func main() {
 }
 
 var editTemplate *template.Template
-var errorTemplate *template.Template
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["shopID"]
@@ -117,16 +111,20 @@ func newShopHandler(w http.ResponseWriter, r *http.Request) {
 		newShop.ShopFrontID = getNewShopfrontID()
 		err = session.DB(dbName).C("shops").Insert(newShop)
 		if err == nil {
+			// if no error, we're done
 			break
-		} else {
-			if mgo.IsDup(err) {
-				continue
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("Error while creating new shop\"%s\":\n%s", newShop.Name, err)
-			w.Write([]byte(""))
-			return
 		}
+		if mgo.IsDup(err) {
+			// if it was a duplicate ID, try again
+			continue
+		}
+
+		// we had an error and it wasn't a duplicate ID, so something else is wrong
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error while creating new shop\"%s\":\n%s", newShop.Name, err)
+		w.Write([]byte("Error creating shop"))
+		return
+
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
