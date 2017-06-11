@@ -1,13 +1,10 @@
 package main
 
 import (
-	"html/template"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"net/http"
-
-	"encoding/json"
-
 	"os"
 
 	"github.com/gorilla/mux"
@@ -40,16 +37,13 @@ func main() {
 	r.HandleFunc("/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}", shopFrontHandler).Methods("GET")
 	r.HandleFunc("/edit/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", editHandler).Methods("GET")
 	r.HandleFunc("/shops", newShopHandler).Methods("POST")
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
+	r.HandleFunc("/shops/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}/{playerName}", getPlayerView).Methods("GET")
+	r.HandleFunc("/shops/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", getDMView).Methods("GET")
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/"))) // Don't add handlers after this. The order is important. Add before.
 
 	http.Handle("/", r)
 
 	var err error
-	editTemplate, err = template.ParseFiles("templates/edit.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	session, err = mgo.Dial(dbAddress)
 	if err != nil {
 		log.Fatal("Error creating databse session:\n", err)
@@ -61,29 +55,19 @@ func main() {
 	err = c.Find(bson.M{"dmid": "asdfasdf"}).One(result)
 
 	if err != nil {
-		log.Fatal("Error retrieving document:\n", err)
+		log.Fatal("Error retrieving asdfasdf during startup:\n", err)
 	}
-	log.Print("Got ", result.DMID, ": ", result.Name)
+	log.Print("Setup complete. Starting server on port ", port)
 
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-var editTemplate *template.Template
-
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["shopID"]
-	thisShop := Shop{}
-	err := session.DB(dbName).C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	editTemplate.Execute(w, thisShop)
+	http.ServeFile(w, r, "dynamic/edit.html")
 }
 
 func shopFrontHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Shopfront under construction"))
+	http.ServeFile(w, r, "dynamic/shopfront.html")
 }
 
 type newShopBody struct {
@@ -98,14 +82,13 @@ func newShopHandler(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Error reading POST body:\n%s", err)
 		w.Write([]byte("Bad POST request body."))
 		return
 	}
 
-	newShop := Shop{Name: body.Name, DMID: ""}
+	newShop := Shop{Name: body.Name}
 	// loop until we add it
-	log.Printf("Adding shop \"%s\"", newShop.Name)
+	log.Printf("Adding shop \"%s\" with DMID %s", newShop.Name, newShop.DMID)
 	for {
 		newShop.DMID = getNewDMID()
 		newShop.ShopFrontID = getNewShopfrontID()
@@ -147,4 +130,21 @@ func getNewShopfrontID() string {
 		newID[i] = idCharacters[rand.Intn(len(idCharacters))]
 	}
 	return string(newID[:])
+}
+
+func getPlayerView(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(bson.M{"status": "Under Construction"})
+}
+
+func getDMView(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["shopID"]
+	thisShop := Shop{}
+	err := session.DB(dbName).C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(thisShop)
 }
