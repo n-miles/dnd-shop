@@ -46,7 +46,7 @@ func main() {
 	var err error
 	session, err = mgo.Dial(dbAddress)
 	if err != nil {
-		log.Fatal("Error creating databse session:\n", err)
+		log.Fatal("Error creating database session:\n", err)
 	}
 
 	c := session.DB(dbName).C("shops")
