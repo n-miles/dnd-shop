@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	mgo "gopkg.in/mgo.v2"
@@ -39,6 +40,7 @@ func main() {
 	r.HandleFunc("/shops", newShopHandler).Methods("POST")
 	r.HandleFunc("/shops/{shopfrontID:[2-9A-HJKMNP-Za-hjkmnp-z]{6}}/{playerName}", getPlayerView).Methods("GET")
 	r.HandleFunc("/shops/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", getDMView).Methods("GET")
+	r.HandleFunc("/shops/{shopID:[2-9A-HJKMNP-Za-hjkmnp-z]{8}}", deleteShop).Methods("DELETE")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/"))) // Don't add handlers after this. The order is important. Add before.
 
 	http.Handle("/", r)
@@ -147,4 +149,15 @@ func getDMView(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(thisShop)
+}
+
+func deleteShop(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["shopID"]
+	err := session.DB(dbName).C("shops").Remove(bson.M{"dmid": strings.ToLower(id)})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/text")
+	w.Write([]byte("Successfully deleted the shop"))
 }
