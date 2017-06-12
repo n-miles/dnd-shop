@@ -140,7 +140,7 @@ func getPlayerView(w http.ResponseWriter, r *http.Request) {
 }
 
 func getDMView(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["shopID"]
+	id := strings.ToLower(mux.Vars(r)["shopID"])
 	thisShop := Shop{}
 	err := session.DB(dbName).C("shops").Find(bson.M{"dmid": id}).One(&thisShop)
 	if err != nil {
@@ -152,8 +152,8 @@ func getDMView(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteShop(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["shopID"]
-	err := session.DB(dbName).C("shops").Remove(bson.M{"dmid": strings.ToLower(id)})
+	id := strings.ToLower(mux.Vars(r)["shopID"])
+	err := session.DB(dbName).C("shops").Remove(bson.M{"dmid": id})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
